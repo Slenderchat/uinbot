@@ -1,4 +1,4 @@
-package uin
+package main
 
 import (
 	"bufio"
@@ -8,13 +8,20 @@ import (
 	"log"
 	"net/http"
 	"os"
+	"plugin"
 	"regexp"
 
 	"github.com/PaulSonOfLars/gotgbot/v2"
 	"github.com/jackc/pgx/v5"
-
-	"github.com/Slenderchat/uinbot/config"
 )
+
+func getConfigItem(p *plugin.Plugin, sname string) plugin.Symbol {
+	s, err := p.Lookup(sname)
+	if err != nil {
+		log.Fatal(err)
+	}
+	return s
+}
 
 func UIN() {
 	var isdata bool = false
@@ -22,9 +29,15 @@ func UIN() {
 	var uin []string
 	var vedomstvo string
 	var sum []string
-	var cfg config.UINBotConfig
-	config.ReadConfig(&cfg)
-	if cfg.TGuinchatid == 0 {
+	p, err := plugin.Open("config.so")
+	if err != nil {
+		log.Fatal(err)
+	}
+	tgtoken := **getConfigItem(p, "TGtoken").(**string)
+	tguinchatid := **getConfigItem(p, "TGuinchatid").(**int64)
+	pghost := **getConfigItem(p, "PGhost").(**string)
+	pgpassword := **getConfigItem(p, "PGpassword").(**string)
+	if tguinchatid == 0 {
 		log.Fatal("Please configure Telegram chatid for UIN's")
 	}
 	scanner := bufio.NewScanner(os.Stdin)
@@ -74,11 +87,11 @@ func UIN() {
 	if vedomstvo == "" {
 		log.Fatal("VEDOMSTVO not found")
 	}
-	b, err := gotgbot.NewBot(cfg.TGtoken, &gotgbot.BotOpts{Client: http.Client{}, DefaultRequestOpts: &gotgbot.RequestOpts{Timeout: gotgbot.DefaultTimeout, APIURL: gotgbot.DefaultAPIURL}})
+	b, err := gotgbot.NewBot(tgtoken, &gotgbot.BotOpts{Client: http.Client{}, DefaultRequestOpts: &gotgbot.RequestOpts{Timeout: gotgbot.DefaultTimeout, APIURL: gotgbot.DefaultAPIURL}})
 	if err != nil {
 		log.Fatal(err)
 	}
-	pg, err := pgx.Connect(context.Background(), `postgres://uinbot:`+cfg.PGpassword+`@//uinbot?host=/run/postgresql`)
+	pg, err := pgx.Connect(context.Background(), `postgres://uinbot:`+pgpassword+`@//uinbot?host=`+pghost)
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -139,7 +152,7 @@ func UIN() {
 		result += "\n`" + uin[ind] + "` на сумму `" + sum[ind] + "` руб\\.\n"
 	}
 	pg.SendBatch(context.Background(), batch)
-	_, err = b.SendMessage(cfg.TGuinchatid, result, &gotgbot.SendMessageOpts{ParseMode: gotgbot.ParseModeMarkdownV2})
+	_, err = b.SendMessage(tguinchatid, result, &gotgbot.SendMessageOpts{ParseMode: gotgbot.ParseModeMarkdownV2})
 	if err != nil {
 		log.Fatal(err)
 	}
