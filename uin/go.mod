@@ -1,4 +1,4 @@
-module sl-chat.ru/m/v2
+module github.com/Slenderchat/uinbot/uin
 
 go 1.20
 

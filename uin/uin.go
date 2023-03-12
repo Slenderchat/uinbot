@@ -1,121 +1,61 @@
-package main
+package uin
 
 import (
 	"bufio"
 	"context"
 	"encoding/base64"
-	"encoding/json"
 	"fmt"
-	"io"
 	"log"
-	"mime/quotedprintable"
 	"net/http"
 	"os"
 	"regexp"
-	"strings"
-	"syscall"
 
 	"github.com/PaulSonOfLars/gotgbot/v2"
 	"github.com/jackc/pgx/v5"
+
+	"github.com/Slenderchat/uinbot/config"
 )
 
-var ISUIN int8 = 0
-var ISDATA bool = false
-var DATA string
-
-var UIN []string
-var SUBJECT string
-var VEDOMSTVO string
-var SUM []string
-
-type Config struct {
-	TGtoken    string `json:"tgtoken"`
-	TGchatid   int64  `json:"tgchatid"`
-	PGpassword string `json:"pgpassword"`
-}
-
-func main() {
-	var config Config
-	configf, err := os.OpenFile("uin.json", os.O_RDONLY, 0600)
-	if err != nil {
-		log.Fatal(err)
-	}
-	jp := json.NewDecoder(configf)
-	jp.Decode(&config)
-	configf.Close()
-	lock, err := os.OpenFile("/tmp/uinbot.lock", os.O_CREATE, 0600)
-	if err != nil {
-		log.Fatal(err)
+func UIN() {
+	var isdata bool = false
+	var data string
+	var uin []string
+	var vedomstvo string
+	var sum []string
+	var cfg config.UINBotConfig
+	config.ReadConfig(&cfg)
+	if cfg.TGuinchatid == 0 {
+		log.Fatal("Please configure Telegram chatid for UIN's")
 	}
 	scanner := bufio.NewScanner(os.Stdin)
+	r := regexp.MustCompile(`^[\r\n]*$`)
 	for scanner.Scan() {
-		if ISUIN == 0 {
-			r := regexp.MustCompile(`Subject: =\?utf-8\?[bBqQ]\?(.+?)\?=`)
+		if !isdata {
 			if r.MatchString(scanner.Text()) {
-				SUBJECT = r.ReplaceAllString(scanner.Text(), "$1")
-				ISUIN = 1
-				continue
-			}
-		}
-		if ISUIN == 1 {
-			r := regexp.MustCompile(`\s*=\?utf-8\?[bBqQ]\?(.+?)\?=`)
-			if r.MatchString(scanner.Text()) {
-				SUBJECT += r.ReplaceAllString(scanner.Text(), "$1")
-				continue
-			} else {
-				ISUIN = 2
-			}
-		}
-		if ISUIN == 2 {
-			r := regexp.MustCompile("^=..=..=")
-			if r.MatchString(scanner.Text()) {
-				d, err := io.ReadAll(quotedprintable.NewReader(strings.NewReader(SUBJECT)))
-				if err != nil {
-					log.Fatal(err)
-				}
-				SUBJECT = string(d)
-			} else {
-				d, err := base64.StdEncoding.DecodeString(SUBJECT)
-				if err != nil {
-					log.Fatal(err)
-				}
-				SUBJECT = string(d)
-			}
-			r = regexp.MustCompile(`УИН\s*по`)
-			if r.MatchString(SUBJECT) {
-				ISUIN = 3
-				continue
-			} else {
-				log.Fatal("Not uin")
-			}
-		}
-		if !ISDATA {
-			r := regexp.MustCompile(`^[\r\n]*$`)
-			if r.MatchString(scanner.Text()) {
-				ISDATA = true
+				isdata = true
 			}
 			continue
 		}
-		if ISDATA {
-			DATA += scanner.Text()
+		if isdata {
+			data += scanner.Text()
 			continue
 		}
 	}
-	if !ISDATA {
+	if !isdata {
 		log.Fatal("No data found")
 	}
-	d, err := base64.StdEncoding.DecodeString(DATA)
+	d, err := base64.StdEncoding.DecodeString(data)
 	if err != nil {
 		log.Fatal(err)
 	}
-	DATA = string(d)
-	r := regexp.MustCompile("[0-9]{20}")
-	UIN = r.FindAllString(DATA, -1)
+	data = string(d)
+	r = regexp.MustCompile("[0-9]{20}")
+	uin = r.FindAllString(data, -1)
 	r = regexp.MustCompile(".*<p>По обращению (.*?) сформирована квитанция.*")
-	VEDOMSTVO = r.ReplaceAllString(DATA, "$1")
+	vedomstvo = r.ReplaceAllString(data, "$1")
 	r = regexp.MustCompile(`([0-9,]*)\.([0-9]{2}) руб\.`)
-	SUM = r.FindAllString(DATA, -1)
-	for ind, el := range SUM {
+	sum = r.FindAllString(data, -1)
+	for ind, el := range sum {
 		if r.ReplaceAllString(el, "$2") == "00" {
 			el = r.ReplaceAllString(el, "$1")
 		} else {
@@ -123,29 +63,26 @@ func main() {
 		}
 		r1 := regexp.MustCompile(",")
 		el = r1.ReplaceAllLiteralString(el, "")
-		SUM[ind] = el
+		sum[ind] = el
 	}
-	if len(UIN) == 0 {
+	if len(uin) == 0 {
 		log.Fatal("UIN's not found")
 	}
-	if len(SUM) == 0 {
+	if len(sum) == 0 {
 		log.Fatal("SUM's not found")
 	}
-	if VEDOMSTVO == "" {
+	if vedomstvo == "" {
 		log.Fatal("VEDOMSTVO not found")
 	}
-	println("Trying to aquire lock on /tmp/uinbot.lock")
-	syscall.Flock(int(lock.Fd()), syscall.LOCK_EX)
-	println("Aquired lock on /tmp/uinbot.lock")
-	b, err := gotgbot.NewBot(config.TGtoken, &gotgbot.BotOpts{Client: http.Client{}, DefaultRequestOpts: &gotgbot.RequestOpts{Timeout: gotgbot.DefaultTimeout, APIURL: gotgbot.DefaultAPIURL}})
+	b, err := gotgbot.NewBot(cfg.TGtoken, &gotgbot.BotOpts{Client: http.Client{}, DefaultRequestOpts: &gotgbot.RequestOpts{Timeout: gotgbot.DefaultTimeout, APIURL: gotgbot.DefaultAPIURL}})
 	if err != nil {
 		log.Fatal(err)
 	}
-	pg, err := pgx.Connect(context.Background(), `postgres://uinbot:`+config.PGpassword+`@//uinbot?host=/run/postgresql`)
+	pg, err := pgx.Connect(context.Background(), `postgres://uinbot:`+cfg.PGpassword+`@//uinbot?host=/run/postgresql`)
 	if err != nil {
 		log.Fatal(err)
 	}
-	res, err := pg.Query(context.Background(), "SELECT object FROM vedomstvo_objects WHERE vedomstvo = '"+VEDOMSTVO+"'")
+	res, err := pg.Query(context.Background(), "SELECT object FROM vedomstvo_objects WHERE vedomstvo = '"+vedomstvo+"'")
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -160,7 +97,7 @@ func main() {
 	}
 	result := "Поступили УИН по следующим объектам:\n"
 	if len(objects) == 0 {
-		log.Println("WARNING: Linked objects not found for `" + VEDOMSTVO + "`")
+		log.Println("WARNING: Linked objects not found for `" + vedomstvo + "`")
 		result += "\n1\\. нет информации об объектах\n"
 	} else {
 		for ind, el := range objects {
@@ -196,13 +133,13 @@ func main() {
 		}
 	}
 	batch := &pgx.Batch{}
-	for ind := range UIN {
-		batch.Queue("INSERT INTO uins (id, sum) VALUES ('" + UIN[ind] + "', '" + SUM[ind] + "') ON CONFLICT DO NOTHING")
-		batch.Queue("INSERT INTO vedomstvo_uins (vedomstvo, uin) SELECT '" + VEDOMSTVO + "', '" + UIN[ind] + "' WHERE NOT EXISTS(SELECT 1 FROM vedomstvo_uins WHERE vedomstvo = '" + VEDOMSTVO + "' AND uin = '" + UIN[ind] + "')")
-		result += "\n`" + UIN[ind] + "` на сумму `" + SUM[ind] + "` руб\\.\n"
+	for ind := range uin {
+		batch.Queue("INSERT INTO uins (id, sum) VALUES ('" + uin[ind] + "', '" + sum[ind] + "') ON CONFLICT DO NOTHING")
+		batch.Queue("INSERT INTO vedomstvo_uins (vedomstvo, uin) SELECT '" + vedomstvo + "', '" + uin[ind] + "' WHERE NOT EXISTS(SELECT 1 FROM vedomstvo_uins WHERE vedomstvo = '" + vedomstvo + "' AND uin = '" + uin[ind] + "')")
+		result += "\n`" + uin[ind] + "` на сумму `" + sum[ind] + "` руб\\.\n"
 	}
 	pg.SendBatch(context.Background(), batch)
-	_, err = b.SendMessage(config.TGchatid, result, &gotgbot.SendMessageOpts{ParseMode: gotgbot.ParseModeMarkdownV2})
+	_, err = b.SendMessage(cfg.TGuinchatid, result, &gotgbot.SendMessageOpts{ParseMode: gotgbot.ParseModeMarkdownV2})
 	if err != nil {
 		log.Fatal(err)
 	}
