@@ -15,4 +15,5 @@
 # vendor/
 
 uin.json
-test.d
+test.d/
+build.sh
