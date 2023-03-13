@@ -26,7 +26,7 @@ func main() {
 			if err != nil {
 				log.Fatal(err)
 			}
-			uin, err := p.Lookup("Rosreest")
+			uin, err := p.Lookup("Rosreestr")
 			if err != nil {
 				log.Fatal(err)
 			}

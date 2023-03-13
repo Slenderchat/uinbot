@@ -15,6 +15,7 @@
 # vendor/
 
 uinbot.json
-test.d/
-build.sh
+*.test.d/
 uinbot
+*.sh
+rosreestr_about/

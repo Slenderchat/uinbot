@@ -8,9 +8,9 @@ import (
 
 type UINBotConfig struct {
 	TG struct {
-		Token           string
-		Uin_chatid      int64
-		Rosreest_chatid int64
+		Token            string
+		Uin_chatid       int64
+		Rosreestr_chatid int64
 	}
 	PG struct {
 		Host     string
@@ -20,7 +20,7 @@ type UINBotConfig struct {
 
 var TGtoken *string = new(string)
 var TGuinchatid *int64 = new(int64)
-var TGextchatid *int64 = new(int64)
+var TGrosreestrchatid *int64 = new(int64)
 var PGpassword *string = new(string)
 var PGhost *string = new(string)
 
@@ -44,7 +44,7 @@ func init() {
 	}
 	*TGtoken = config.TG.Token
 	*TGuinchatid = config.TG.Uin_chatid
-	*TGextchatid = config.TG.Rosreest_chatid
+	*TGrosreestrchatid = config.TG.Rosreestr_chatid
 	*PGpassword = config.PG.Password
 	*PGhost = config.PG.Host
 }
